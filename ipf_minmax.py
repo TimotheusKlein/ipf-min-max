@@ -29,7 +29,7 @@
 
 import numpy as np
 
-def ipfminmax(matrix, row_min, row_max, col_min, col_max, gap, gap_improvement, iterations):
+def ipfminmax(matrix, row_min, row_max, col_min, col_max, gap, gap_improvement, iterations, constraint='o'):
     # setup gap monitoring
     mgap = 0
     no_gap_improvement = 0
@@ -42,19 +42,39 @@ def ipfminmax(matrix, row_min, row_max, col_min, col_max, gap, gap_improvement, 
 
     # start iteration
     for it in range(iterations):
-        
-        # margin vectors
-        rowsum = np.sum(matrix,axis=1)
-        colsum = np.sum(matrix,axis=0)
-        
         # correction factor vectors
-        fr = np.ones(rowsum.shape)
-        fr = np.where(r_min > rowsum,np.where(rowsum > 0,r_min/rowsum,fr),fr)
-        fr = np.where(r_max < rowsum,np.where(rowsum > 0,r_max/rowsum,fr),fr)
-        fc = np.ones(colsum.shape)
-        fc = np.where(c_min > colsum,np.where(rowsum > 0,c_min/colsum,fc),fc)
-        fc = np.where(c_max < colsum,np.where(rowsum > 0,c_max/colsum,fc),fc)
-
+        if constraint == 'o':
+            # if origin constrained: apply column factors first to make
+            # sure row sums match margin values
+            # calculate and apply col factor first
+            rowsum = np.sum(matrix,axis=1)
+            colsum = np.sum(matrix,axis=0)
+            fc = np.ones(colsum.shape)
+            fc = np.where(c_min > colsum,np.where(rowsum > 0,c_min/colsum,fc),fc)
+            fc = np.where(c_max < colsum,np.where(rowsum > 0,c_max/colsum,fc),fc)
+            matrix = matrix * fc
+            # now calculate and apply row factor second
+            rowsum = np.sum(matrix,axis=1)
+            colsum = np.sum(matrix,axis=0)
+            fr = np.ones(rowsum.shape)
+            fr = np.where(r_min > rowsum,np.where(rowsum > 0,r_min/rowsum,fr),fr)
+            fr = np.where(r_max < rowsum,np.where(rowsum > 0,r_max/rowsum,fr),fr)
+            matrix = (matrix.T * fr).T
+        else:
+            # the other way round
+            rowsum = np.sum(matrix,axis=1)
+            colsum = np.sum(matrix,axis=0)
+            fr = np.ones(rowsum.shape)
+            fr = np.where(r_min > rowsum,np.where(rowsum > 0,r_min/rowsum,fr),fr)
+            fr = np.where(r_max < rowsum,np.where(rowsum > 0,r_max/rowsum,fr),fr)
+            matrix = (matrix.T * fr).T
+            rowsum = np.sum(matrix,axis=1)
+            colsum = np.sum(matrix,axis=0)
+            fc = np.ones(colsum.shape)
+            fc = np.where(c_min > colsum,np.where(rowsum > 0,c_min/colsum,fc),fc)
+            fc = np.where(c_max < colsum,np.where(rowsum > 0,c_max/colsum,fc),fc)
+            matrix = matrix * fc
+            
         # current gap
         r_gap = np.sum(np.min([np.where(fr != 1.0, np.absolute(rowsum - r_min), 0),
                                np.where(fr != 1.0, np.absolute(rowsum - r_max), 0)],axis=0))
@@ -63,14 +83,12 @@ def ipfminmax(matrix, row_min, row_max, col_min, col_max, gap, gap_improvement, 
                                np.where(fc != 1.0, np.absolute(colsum - c_max), 0)],axis=0))
         ngap = r_gap + c_gap
         if abs(ngap-mgap) < gap_improvement: no_gap_improvement += 1
+        
+        # continue?   
         if ngap < gap or no_gap_improvement == 10:
             break
         else:
             mgap = ngap + 0.0
-            
-        # matrix fitting
-        matrix = matrix * fc
-        matrix = (matrix.T * fr).T
         
     return matrix, it+1, ngap, mgap-ngap
 
